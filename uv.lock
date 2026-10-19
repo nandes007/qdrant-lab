@@ -229,7 +229,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.4" },
-    { name = "qdrant-client", extras = ["fastembed"], specifier = ">=1.19.1" },
+    { name = "qdrant-client", extras = ["fastembed"], specifier = ">=1.14.2" },
 ]
 
 [[package]]

@@ -7,6 +7,7 @@ Local version of https://qdrant.tech/documentation/tutorials-basics/cloud-infere
 import os
 
 import httpx
+from datasets import load_dataset
 from dotenv import load_dotenv
 from fastembed import SparseTextEmbedding
 from qdrant_client import QdrantClient, models
@@ -20,17 +21,17 @@ COLLECTION_NAME = "hybrid-search"
 client = QdrantClient(url=os.getenv("QDRANT_URL", "http://localhost:6333"))
 bm25 = SparseTextEmbedding("Qdrant/bm25")
 
-# ponytail: a few inline medical passages instead of the miriad-4.4M dataset; swap in `datasets` if you want the real thing
-passages = [
-    "Stoma closure can fail due to anastomotic leak, infection, or poor blood supply at the bowel ends.",
-    "Wound infection is the most common complication after ileostomy reversal.",
-    "Patients with diabetes have delayed wound healing because of impaired microcirculation.",
-    "Hypertension is often managed with ACE inhibitors and lifestyle changes.",
-    "Anastomotic leakage after colorectal surgery increases mortality and length of hospital stay.",
-    "Vitamin D deficiency is linked to weak bones and an increased risk of fractures.",
-    "Smoking reduces tissue oxygenation and is a risk factor for surgical complications.",
-    "Early mobilization after abdominal surgery lowers the risk of deep vein thrombosis.",
-]
+# ponytail: one parquet shard (~33MB) out of 49, cached in ~/.cache/huggingface after the first run.
+# The tutorial uses streaming=True instead, which re-downloads every run and was slow/flaky here.
+ds = (
+    load_dataset("miriad/miriad-4.4M", data_files="data/train-00000-of-00049.parquet", split="train")
+    # each passage has several QA pairs (qa_id "<id>_1", "<id>_2", ...); keep one so passages are distinct
+    .filter(lambda row: row["qa_id"].endswith("_1"))
+    .shuffle(seed=42)
+    .select(range(100))
+)
+rows: list[dict] = ds.to_list()
+passages: list[str] = list(ds["passage_text"])
 
 
 def embed(texts):
@@ -69,8 +70,8 @@ client.create_collection(
 client.upsert(
     collection_name=COLLECTION_NAME,
     points=[
-        models.PointStruct(id=i, vector={"dense_vector": d, "bm25": sparse(s)}, payload={"passage_text": p})
-        for i, (p, d, s) in enumerate(zip(passages, dense_vecs, sparse_vecs))
+        models.PointStruct(id=i, vector={"dense_vector": d, "bm25": sparse(s)}, payload=row)
+        for i, (row, d, s) in enumerate(zip(rows, dense_vecs, sparse_vecs))
     ],
 )
 
@@ -86,4 +87,4 @@ results = client.query_points(
     with_payload=True,
 )
 for p in results.points:
-    print(f"{p.score:.4f}  {p.payload['passage_text']}")
+    print(f"{p.score:.4f}  {p.payload['passage_text'][:150]}...")

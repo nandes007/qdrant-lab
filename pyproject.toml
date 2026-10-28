@@ -3,6 +3,7 @@ name = "first-project"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "datasets>=5.1.0",
     "python-dotenv>=1.2.4",
     "qdrant-client[fastembed]>=1.14.2",
 ]
